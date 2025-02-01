@@ -1,0 +1,80 @@
+# Dockerizing a base images with:
+#
+#   - Ubuntu 18.04 LTS (Bionic Beaver)
+#   - OpenJDK 8
+#   - Caucho Resin http://caucho.com/download/resin-4.0.65.tar.gz
+#
+# Build:    
+#docker build -t resin-lete:1 .
+#
+# Run:      
+#
+# docker run --name resinLete -itd -p 8083:8080 -v /opt/mw/licencias:/opt/mw/licencias resin-lete:1
+# docker logs resinLete
+# docker exec -it resinLete resinctl status
+# docker exec -it resinLete resinctl start
+# docker exec -it resinLete resinctl stop
+# docker exec -it resinLete ls
+# docker exec -it resinLete cat /opt/mw/resin-lete/conf/resin.xml
+# docker exec -it resinLete /bin/bash
+# docker exec -it resinLete less /opt/mw/resin-lete/log-new/leteserv/leteserv.log
+# docker exec -it resinLete vim /opt/mw/resin-lete/webapps/LeteServ/WEB-INF/classes/logback.groovy
+
+
+FROM ubuntu:18.04
+
+ENV TZ=America/Argentina/Buenos_Aires
+
+RUN apt-get update && apt-get -y install tzdata
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+RUN dpkg-reconfigure --frontend noninteractive tzdata
+
+#Install Open JDK 8
+#build-essential para poder compilar gcc
+#wget para descargar resin
+RUN apt-get update \
+    && apt-get -y install build-essential openjdk-8-jdk\
+    && apt-get -y --no-install-recommends install \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64
+ENV PATH $JAVA_HOME/bin:$PATH
+#RUN echo 'JAVA_HOME = / usr / local / java / jdk' >> /root/.bashrc
+#RUN echo 'PATH = / usr / local / java / jdk / bin: $ PATH' >> /root/.bashrc
+
+#RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+#RUN dpkg-reconfigure --frontend noninteractive tzdata
+
+#Install Resin 4
+ENV PATH_BASE=/opt/mw
+ENV PATH_RESIN=$PATH_BASE/resin-lete
+ENV RESIN_VER=4.0.65
+
+RUN mkdir -p /opt/mw
+ADD http://caucho.com/download/resin-4.0.65.tar.gz .
+RUN tar -vzxf resin-4.0.65.tar.gz
+RUN mv resin-4.0.65 /opt/mw/resin-lete
+RUN cd /opt/mw/resin-lete && ./configure --prefix=/opt/mw/resin-lete&& make && make install
+#eliminar los archivos del directorio resin-4.0.65 y resin-4.0.65.tar.gz
+
+#resinctl generate-password my-user my-password >> /etc/resin/resin.properties
+RUN echo "admin_user: admin" >> /opt/mw/resin-lete/conf/resin.properties
+RUN echo "admin_password: {SSHA}FR8bK6ych6QefuaAR1fUAckNurf8VhSw" >> /opt/mw/resin-lete/conf/resin.properties
+RUN echo "web_admin_external: true" >> /opt/mw/resin-lete/conf/resin.properties
+#RUN echo "admin_secure: true" >> /etc/resin/resin.properties
+
+#licencia
+RUN mkdir -p /opt/mw/licencias
+ADD ./resources/leteserv.lic2 $PATH_BASE/licencias
+#leteserv.ini
+RUN mkdir -p /opt/mw/lete
+ADD ./resources/leteserv.ini /opt/mw/lete
+#webapp-jars
+ADD ./resources/webapp-jars /opt/mw/resin-lete/webapp-jars/
+#LeteServ
+ADD ./resources/LeteServ /opt/mw/resin-lete/webapps/LeteServ
+
+#RUN mkdir -p /usr/local/java
+#RUN mkdir -p /opt/deploy
+ENV PATH /opt/mw/resin-lete/bin:$PATH
+CMD ["resinctl","start-with-foreground"]
